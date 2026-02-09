@@ -1,0 +1,101 @@
+all imms are 16 bit
+all reg are 16 bit or 8 bit
+registor id's are 8 bit
+
+register names:
+A, B, C, SP,  // 16 bit
+G, H, I, FLAGS,  // 8 bit
+0, 1, 2, 3,
+4, 5, 6, 7 
+
+FFFE$FFFF = reset vector
+FEFE-FFFD = stack; start from FFFD grow towards 0000
+
+FEFD  : invoke call [1 : PRINTCHAR          ]
+FEFC  : arg1        [CHAR(only FEFB is used)]
+
+nop
+
+load @imm, reg     value at imm = reg
+load reg, @imm     reg = value at imm
+load @imm+reg, reg value at (imm+reg) = reg
+load reg, @imm+reg reg = value at (imm+reg)
+load reg, imm      reg = imm
+load @imm, imm     value at imm = imm
+
+jmp imm     pc = imm
+jmp reg+imm pc = (reg + imm)
+
+cmp reg, reg   compare 2 registors
+cmp @imm, @imm compare 2 values in memory
+cmp reg, @imm  compare a reg with a value in memory
+cmp reg, imm   compare a reg with a imm
+;; fyi compare is just subtract with extra steps
+
+eq Vimm   treat imm as signed, pc += imm if zero flag on   (==)
+nq Vimm   treat imm as signed, pc += imm if zero flag off  (!=)
+ls Vimm   treat imm as signed, pc += imm if carry flag off (<)
+mreq Vimm treat imm as signed, pc += imm if carry flag on  (>=)
+ov Vimm   treat imm as signed, pc += imm if overflow flag on 
+nov Vimm  treat imm as signed, pc += imm if overflow lag off
+
+add reg, reg, reg1  reg1 = reg + reg 
+add reg, @imm, reg1 reg1 = reg + (value at imm)
+addi reg, imm       reg += imm
+;; also sets flags accordingly
+
+sub reg, reg, reg1  reg1 = reg - reg 
+sub reg, @imm, reg1 reg1 = reg - (value at imm)
+subi reg, imm       reg -= imm
+;; also sets flags accordingly
+
+mul reg, reg, reg1  reg1 = reg + reg 
+mul reg, @imm, reg1 reg1 = reg + (value at imm)
+;; does not set flags
+
+div reg, reg, reg1  reg1 = reg + reg 
+div reg, @imm, reg1 reg1 = reg + (value at imm)
+ does not set flags
+
+call reg+imm; push pc, push status jump to reg + imm 
+ret
+push imm  push a imm onto stack
+push @imm push the value at a imm to stack
+push reg  push a reg onto stack
+pop @imm  pop from stack to some point in memory ie memory[imm] = pop()
+pop reg   reg = pop()
+
+assmbler extras:
+.bytes int, int, int ...; name
+example
+    .bytes 104, 105, 33, 10; message
+
+.string "Hello, world"; name
+
+parent_lable:
+    .child_lable
+        .child_child_lable
+example
+    main:
+        .print
+            code...
+        .loop
+            call print
+            jmp loop
+
+-- example --
+
+.string "Hello, world\n" message
+main:
+    load A, message      // a is equal to pointer to first letter
+    .loop
+        load G, @0+A     // load g with the char
+        cmp G, 0         // if compare g and 0
+        eq exit          // if g == 0, jump to exit
+        load @65276, G   // load char into 0xFEFC
+        load @65277, 1   // load 1 into 0xFEFD; invokes syscall, prints
+        addi A, 1        // a++
+        jmp .loop        // goto loop
+exit:                
+    jmp exit             // loop forever
+.reset main
