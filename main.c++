@@ -6,6 +6,8 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <fstream>
+#include <stdexcept>
 #define bitLimit 65536
 
 /*
@@ -192,7 +194,7 @@ struct DASH {
     uint16_t pc;
 
     const int stackBegin = 0xFFFD;
-    const int SP = 3;
+    const int SP = 0;
 
     struct Registers {
         uint16_t r16[4]; // A B C SP
@@ -805,7 +807,10 @@ struct Assmbler {
 
         std::vector<std::string> lines = splitLines(code);
 
-        for (const std::string& rawLine : lines) {
+        for (std::string& rawLine : lines) {
+            if (rawLine.length() > 0 && rawLine[rawLine.length()-1] == '\r') {
+                rawLine.pop_back();
+            }
             std::vector<std::string> tok = splitTokens(rawLine);
             if (tok.empty()) continue;
 
@@ -1041,26 +1046,99 @@ struct Assmbler {
     }
 };
 
-int main() {
-    DASH vm;
-    Assmbler dashASM;
-    std::string code = ".string \"Hello, world\\n\" message\n"
-                       "main:\n"
-                       "    load A, message\n"      // a is equal to pointer to first letter
-                       "    .loop\n"
-                       "        load G, @0+A\n"     // load g with the char
-                       "        cmp G, 0\n"         // if compare g and 0
-                       "        eq exit\n"          // if g == 0, jump to exit
-                       "        load @65276, G\n"   // load char into 0xFEFC
-                       "        load @65277, 1\n"   // load 1 into 0xFEFD; invokes syscall, prints
-                       "        addi A, 1\n"        // a++
-                       "        jmp .loop\n"        // goto loop
-                       "exit:\n"                    
-                       "    jmp exit\n"             // loop forever
-                       ".reset main\n"
-                       ;
+std::string read(const std::string& path) {
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file) throw std::runtime_error("Failed to open file: " + path);
 
-    vm.memory = dashASM.assmble(code);
-    vm.run();
+    file.seekg(0, std::ios::end);
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::string buffer(size, '\0');
+    if (!file.read(buffer.data(), size))
+        throw std::runtime_error("Failed to read file: " + path);
+
+    return buffer;
+}
+
+std::array<uint8_t, bitLimit> assemble_file(const std::string& path) {
+    return Assmbler().assmble(read(path));
+}
+
+std::array<uint8_t, bitLimit> load_binary(const std::string& path) {
+    std::array<uint8_t, bitLimit> binary{};
+    std::ifstream in(path, std::ios::in | std::ios::binary);
+    if (!in) throw std::runtime_error("Failed to open input file: " + path);
+
+    in.read(reinterpret_cast<char*>(binary.data()), binary.size());
+    return binary;
+}
+
+void write_binary(const std::string& path, const std::array<uint8_t, bitLimit>& binary) {
+    std::ofstream out(path, std::ios::out | std::ios::binary);
+    if (!out) throw std::runtime_error("Failed to open output file for writing: " + path);
+    out.write(reinterpret_cast<const char*>(binary.data()), binary.size());
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 3)
+        throw std::runtime_error("Usage:\n"
+                                 "  dash -assemble <in.asm> <out.bin>\n"
+                                 "  dash -assemble -run <in.asm>\n"
+                                 "  dash -run <file.bin>");
+
+    bool do_assemble = false;
+    bool do_run = false;
+    std::string input_file;
+    std::string output_file;
+
+    int arg_index = 1;
+    if (std::string(argv[arg_index]) == "-assemble") {
+        do_assemble = true;
+        ++arg_index;
+        if (arg_index >= argc)
+            throw std::runtime_error("Missing input file for -assemble.");
+        if (std::string(argv[arg_index]) == "-run") {
+            do_run = true;
+            ++arg_index;
+            if (arg_index >= argc)
+                throw std::runtime_error("Missing input file for -assemble -run.");
+            input_file = argv[arg_index++];
+        } else {
+            input_file = argv[arg_index++];
+            if (arg_index < argc)
+                output_file = argv[arg_index++];
+        }
+    } else if (std::string(argv[arg_index]) == "-run") {
+        do_run = true;
+        ++arg_index;
+        if (arg_index >= argc)
+            throw std::runtime_error("Missing input file for -run.");
+        input_file = argv[arg_index++];
+    } else {
+        throw std::runtime_error("Invalid arguments.");
+    }
+
+    std::array<uint8_t, bitLimit> binary{};
+
+    if (do_assemble) {
+        binary = assemble_file(input_file);
+
+        if (do_run) {
+            DASH vm;
+            vm.memory = binary;
+            vm.run();
+        } else {
+            if (output_file.empty())
+                throw std::runtime_error("Output file required for -assemble without -run.");
+            write_binary(output_file, binary);
+        }
+    } else if (do_run) {
+        binary = load_binary(input_file);
+        DASH vm;
+        vm.memory = binary;
+        vm.run();
+    }
+
     return 0;
 }

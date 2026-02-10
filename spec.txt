@@ -3,9 +3,9 @@ all reg are 16 bit or 8 bit
 registor id's are 8 bit
 
 register names:
-A, B, C, SP,  // 16 bit
-G, H, I, FLAGS,  // 8 bit
-0, 1, 2, 3,
+A, B, C, SP,    16 bit
+G, H, I, FLAGS, 8 bit
+0, 1, 2, 3,     mapping to id (0 means A 1 means B so on) 
 4, 5, 6, 7 
 
 FFFE$FFFF = reset vector
